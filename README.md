@@ -17,3 +17,12 @@ A WooCommerce plugin to prevent customers from purchasing products more than onc
 For Simple products, there is a "Prevent Repeat Purchases?" checkbox in the "General" product metabox. If checked,
 customers will only be able to purchase the product once (per account). This works via the `wc_customer_bought_product`
 function, and is set on a product-by-product basis.
+
+## Customization
+If you would like to change the message showed to users when they can't make a repeat purchase, use the
+`wc_repeat_nonpurchaseable_message` filter, for example:
+```php
+add_filter( 'wc_repeat_nonpurchaseable_message', function() {
+  return "Ya can't have it AGAIN!";
+} );
+```

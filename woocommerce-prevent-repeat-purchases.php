@@ -143,12 +143,15 @@ class WC_Prevent_Repeat_Purchases {
 	 * @return string
 	 */
 	public function generate_disabled_message() {
+	    // Message text
+	    $message = __( 'Looks like you\'ve already purchased this product! It can only be purchased once.', 'woocommerce-prevent-repeat-purchases' );
+
 		// Generate the message
 		ob_start();
 		?>
 		<div class="woocommerce">
 			<div class="woocommerce-info wc-nonpurchasable-message">
-				Looks like you've already purchased this product! It can only be purchased once.
+				<?php echo esc_html( apply_filters( 'wc_repeat_nonpurchaseable_message', $message ) ); ?>
 			</div>
 		</div>
 		<?php
