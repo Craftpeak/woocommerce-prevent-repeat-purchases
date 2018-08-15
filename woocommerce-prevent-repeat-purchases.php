@@ -17,9 +17,10 @@ class WC_Prevent_Repeat_Purchases {
 		add_action( 'woocommerce_product_options_general_product_data', [ &$this, 'write_panel' ] );
 		// Process the Admin Panel Saving
 		add_action( 'woocommerce_process_product_meta', [ &$this, 'write_panel_save' ] );
+		// Admin-side Scripts
+        add_action( 'admin_enqueue_scripts', [ &$this, 'admin_scripts' ] );
 
 		// Don't allow the product to be purchased more than once
-		add_filter( 'woocommerce_variation_is_purchasable', [ &$this, 'prevent_repeat_purchase' ], 10, 2 );
 		add_filter( 'woocommerce_is_purchasable', [ &$this, 'prevent_repeat_purchase' ], 10, 2 );
 
 		// Purchase Disabled Messages
@@ -33,8 +34,17 @@ class WC_Prevent_Repeat_Purchases {
 	 * Function to write the HTML/form fields for the product panel
 	 */
 	public function write_panel() {
+	    // Setup some globals
+	    global $post;
+        $product = wc_get_product( $post->ID );
+
+        // Exit if this is not a simple product
+        if ( $product && ! $product->is_type( 'simple' ) ) {
+            return;
+        }
+
 		// Open Options Group
-		echo '<div class="options_group">';
+		echo '<div class="options_group prevent-repeat-purchase-wrap">';
 
 		// Write the checkbox for the product option
 		woocommerce_wp_checkbox( [
@@ -57,6 +67,30 @@ class WC_Prevent_Repeat_Purchases {
 		// Toggle the checkbox
 		update_post_meta( $post_id, 'prevent_repeat_purchase', empty( $_POST['prevent_repeat_purchase'] ) ? 'no' : 'yes' );
 	}
+
+    /**
+     * Scripts for the Admin to hide checkbox for products that aren't simple
+     */
+    public function admin_scripts() {
+        // Get Screens
+        $screen       = get_current_screen();
+        $screen_id    = $screen ? $screen->id : '';
+
+        // If this is the product edit screen
+        if ( in_array( $screen_id, [ 'product', 'edit-product' ] ) ) {
+            // JS to hide the option if it's not a simple product, just in case
+            wc_enqueue_js( "
+            jQuery( document.body ).on( 'woocommerce-product-type-change', function( event, value ) {
+                if ( value !== 'simple' ) {
+                    // Uncheck Checkbox
+                    jQuery( '#prevent_repeat_purchase' ).prop( 'checked', false );
+                    // Hide
+                    jQuery( '.prevent-repeat-purchase-wrap' ).hide();
+                }
+            });
+            " );
+        };
+    }
 
 	/**
 	 * Prevents repeat purchase for the product
@@ -98,11 +132,6 @@ class WC_Prevent_Repeat_Purchases {
 			$purchasable = false;
 		}
 
-		// Double-check for variations: if parent is not purchasable, then variation is not
-		if ( $purchasable && $product->is_type( 'variation' ) ) {
-			$purchasable = $product->parent->is_purchasable();
-		}
-
 		return $purchasable;
 	}
 
@@ -113,18 +142,12 @@ class WC_Prevent_Repeat_Purchases {
 	 *
 	 * @return string
 	 */
-	public function generate_disabled_message( $variation_id = '' ) {
-		// Determine if we need any special classes
-		$classes = '';
-		if ( $variation_id ) {
-			$classes .= ' js-variation-' . sanitize_html_class( $variation_id );
-		}
-
+	public function generate_disabled_message() {
 		// Generate the message
 		ob_start();
 		?>
 		<div class="woocommerce">
-			<div class="woocommerce-info wc-nonpurchasable-message <?php echo $classes ?>">
+			<div class="woocommerce-info wc-nonpurchasable-message">
 				Looks like you've already purchased this product! It can only be purchased once.
 			</div>
 		</div>
@@ -150,65 +173,13 @@ class WC_Prevent_Repeat_Purchases {
 		if ( get_post_meta( $product_id, 'prevent_repeat_purchase', true ) === 'yes' ) {
 			$no_repeats_id = $product_id;
 		}
-		$no_repeats_product = wc_get_product( $no_repeats_id );
 
-		var_dump( $no_repeats_product->is_type( 'variation' ) );
-
-		// ... if it's a variation
-		if ( $no_repeats_product && $no_repeats_product->is_type( 'variation' ) ) {
-			// Bail if we're not looking at the product page for the non-purchasable product
-			if ( ! $no_repeats_product->parent->id === $product->get_id() ) {
-				return;
-			}
-			// Render the purchase restricted message if we are
-			if ( wc_customer_bought_product( wp_get_current_user()->user_email, get_current_user_id(), $no_repeats_id ) ) {
-				$this->render_variation_non_purchasable_message( $product, $no_repeats_id );
-			}
-		}
-		// ... if it's a normal product
-		elseif ( $no_repeats_id === $product->get_id() ) {
+		// Show the disabled message
+		if ( $no_repeats_id === $product->get_id() ) {
 			if ( wc_customer_bought_product( wp_get_current_user()->user_email, get_current_user_id(), $no_repeats_id ) ) {
 				// Show the disabled message
 				echo $this->generate_disabled_message();
 			}
-		}
-	}
-
-	/**
-	 * Generates a "purchase disabled" message to the customer for specific variations
-	 *
-	 * @param \WC_Product $product the WooCommerce product
-	 * @param int $no_repeats_id the id of the non-purchasable product
-	 */
-	public function render_variation_non_purchasable_message( $product, $no_repeats_id ) {
-		// Double-check we're looking at a variable product
-		if ( $product->is_type( 'variable' ) && $product->has_child() ) {
-			$variation_purchasable = true;
-			foreach ( $product->get_available_variations() as $variation ) {
-				// only show this message for non-purchasable variations matching our ID
-				if ( $no_repeats_id === $variation['variation_id'] ) {
-					$variation_purchasable = false;
-
-					// Show the disabled message
-					echo $this->generate_disabled_message( $variation['variation_id'] );
-				}
-			}
-		}
-		// show / hide this message for the right variation with some jQuery magic
-		if ( ! $variation_purchasable ) {
-			wc_enqueue_js( "
-			jQuery( '.variations_form' )
-				.on( 'woocommerce_variation_select_change', function( event ) {
-					jQuery( '.wc-nonpurchasable-message' ).hide();
-				})
-				.on( 'found_variation', function( event, variation ) {
-					jQuery( '.wc-nonpurchasable-message' ).hide();
-					if ( ! variation.is_purchasable ) {
-						jQuery( '.wc-nonpurchasable-message.js-variation-' + variation.variation_id ).show();
-					}
-				})
-				.find( '.variations select' ).change();
-			" );
 		}
 	}
 
