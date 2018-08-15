@@ -1,0 +1,15 @@
+{
+  "name"        : "craftpeak/woocommerce-prevent-repeat-purchases",
+  "description" : "A WooCommerce plugin to prevent customers from purchasing products more than once. Only works with Simple products.",
+  "keywords"    : ["wordpress","woocommerce"],
+  "homepage"    : "https://github.com/Craftpeak/woocommerce-prevent-repeat-purchases/",
+  "license"     : "GPL-3.0+",
+  "type"        : "wordpress-plugin",
+  "authors"     : [
+    {
+      "name"     : "Craftpeak",
+      "email"    : "hello@craftpeak.com",
+      "homepage" : "https://craftpeak.com"
+    }
+  ]
+}
