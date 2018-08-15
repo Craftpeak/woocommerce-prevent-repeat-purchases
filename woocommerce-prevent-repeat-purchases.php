@@ -206,4 +206,3 @@ class WC_Prevent_Repeat_Purchases {
 add_action( 'plugins_loaded', function() {
 	$WC_Prevent_Repeat_Purchases = new WC_Prevent_Repeat_Purchases();
 } );
-
