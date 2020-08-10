@@ -20,14 +20,8 @@ class WC_Prevent_Repeat_Purchases {
 		// Admin-side Scripts
 		add_action( 'admin_enqueue_scripts', [ &$this, 'admin_scripts' ] );
 
-		// See if product is purchasable only on the add_to_cart action
+		// See if product is purchasable on add_to_cart
 		add_filter( 'woocommerce_add_to_cart_validation', [ &$this, 'prevent_repeat_purchase' ], 10, 2 );
-
-		// Purchase Disabled Messages
-		add_action( 'woocommerce_single_product_summary', [ &$this, 'purchase_disabled_message' ], 31 );
-
-		// Disable a false positive purchased alert
-		add_action( 'wp', [ &$this, 'disable_order_received_product_removal_alert' ] );
 	}
 
 	/**
@@ -93,15 +87,6 @@ class WC_Prevent_Repeat_Purchases {
 	}
 
 	/**
-	 * The purchased message
-	 */
-	public function purchased_message() {
-		$purchased_message = __( 'Looks like you\'ve already purchased this product! It can only be purchased once.', 'woocommerce-prevent-repeat-purchases' );
-
-		return apply_filters('wc_prevent_repeat_purchase_message', $purchased_message);
-	}
-
-	/**
 	 * Prevents repeat purchase for the product
 	 *
 	 * Based on code from SkyVerge
@@ -112,14 +97,6 @@ class WC_Prevent_Repeat_Purchases {
 	 * @return bool $purchasable the updated is_purchasable check
 	 */
 	public function prevent_repeat_purchase( $purchasable, $product_id ) {
-		// Exit if this is the order received page.
-		// This is to avoid showing the "%s has been removed from your cart because it can no longer be purchased."
-		// warning message after the item has been purchased which could lead to confusion as to whether their purchase
-		// was complete.
-		if ( is_wc_endpoint_url( 'order-received' ) ) {
-			return true;
-		}
-
 		// Variable to check against
 		$non_purchasable = 0;
 
@@ -144,69 +121,12 @@ class WC_Prevent_Repeat_Purchases {
 	}
 
 	/**
-	 * Function to generate the disabled message
-	 *
-	 * @param $variation_id
-	 *
-	 * @return string
+	 * The purchased message
 	 */
-	public function generate_disabled_message() {
-		// Generate the message
-		ob_start();
-		?>
-		<div class="woocommerce">
-			<div class="woocommerce-info wc-nonpurchasable-message">
-				<?php echo esc_html( $this->purchased_message() ); ?>
-			</div>
-		</div>
-		<?php
-		return ob_get_clean();
-	}
+	public function purchased_message() {
+		$purchased_message = __( 'Looks like you\'ve already purchased this product! It can only be purchased once.', 'woocommerce-prevent-repeat-purchases' );
 
-	/**
-	 * Shows a "purchase disabled" message to the customer
-	 *
-	 * Based on code from SkyVerge:
-	 * @link https://www.skyverge.com/blog/prevent-repeat-purchase-with-woocommerce/
-	 */
-	public function purchase_disabled_message() {
-		// Get the current product to check if purchasing should be disabled
-		global $product;
-
-		// Get the ID for the current product (passed in)
-		$product_id = $product->get_id();
-		$no_repeats_id = 0;
-
-		// Enter the ID of the product that shouldn't be purchased again
-		if ( get_post_meta( $product_id, 'prevent_repeat_purchase', true ) === 'yes' ) {
-			$no_repeats_id = $product_id;
-		}
-
-		// Show the disabled message
-		if ( $no_repeats_id === $product->get_id() ) {
-			if ( wc_customer_bought_product( wp_get_current_user()->user_email, get_current_user_id(), $no_repeats_id ) ) {
-				// Show the disabled message
-				echo $this->generate_disabled_message();
-			}
-		}
-	}
-
-	/**
-	 * Disable the a false positive alert on order_recieved
-	 */
-	public function disable_order_received_product_removal_alert() {
-		// Check for the order-received endpoint (the point just after the checkout)
-		if ( is_wc_endpoint_url( 'order-received' ) ) {
-			// Get all error notices
-			$notices = wc_get_notices( 'error' );
-			foreach ( $notices as $notice ) {
-				// Check if notice text matches ours
-				if ( strpos( $notice, 'has been removed from your cart because it can no longer be purchased') !== false ) {
-					// Clear the notices
-					wc_clear_notices();
-				}
-			}
-		}
+		return apply_filters( 'wc_prevent_repeat_purchase_message', $purchased_message );
 	}
 }
 
