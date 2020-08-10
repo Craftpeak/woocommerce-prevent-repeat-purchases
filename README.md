@@ -20,9 +20,9 @@ function, and is set on a product-by-product basis.
 
 ## Customization
 If you would like to change the message showed to users when they can't make a repeat purchase, use the
-`wc_repeat_nonpurchaseable_message` filter, for example:
+`wc_prevent_repeat_purchase_message` filter, for example:
 ```php
-add_filter( 'wc_repeat_nonpurchaseable_message', function() {
+add_filter( 'wc_prevent_repeat_purchase_message', function() {
   return "Ya can't have it AGAIN!";
 } );
 ```

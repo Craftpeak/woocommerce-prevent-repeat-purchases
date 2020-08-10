@@ -18,10 +18,10 @@ class WC_Prevent_Repeat_Purchases {
 		// Process the Admin Panel Saving
 		add_action( 'woocommerce_process_product_meta', [ &$this, 'write_panel_save' ] );
 		// Admin-side Scripts
-        add_action( 'admin_enqueue_scripts', [ &$this, 'admin_scripts' ] );
+		add_action( 'admin_enqueue_scripts', [ &$this, 'admin_scripts' ] );
 
-		// Don't allow the product to be purchased more than once
-		add_filter( 'woocommerce_is_purchasable', [ &$this, 'prevent_repeat_purchase' ], 10, 2 );
+		// See if product is purchasable only on the add_to_cart action
+		add_filter( 'woocommerce_add_to_cart_validation', [ &$this, 'prevent_repeat_purchase' ], 10, 2 );
 
 		// Purchase Disabled Messages
 		add_action( 'woocommerce_single_product_summary', [ &$this, 'purchase_disabled_message' ], 31 );
@@ -34,14 +34,14 @@ class WC_Prevent_Repeat_Purchases {
 	 * Function to write the HTML/form fields for the product panel
 	 */
 	public function write_panel() {
-	    // Setup some globals
-	    global $post;
-        $product = wc_get_product( $post->ID );
+		// Setup some globals
+		global $post;
+		$product = wc_get_product( $post->ID );
 
-        // Exit if this is not a simple product
-        if ( $product && ! $product->is_type( 'simple' ) ) {
-            return;
-        }
+		// Exit if this is not a simple product
+		if ( $product && ! $product->is_type( 'simple' ) ) {
+			return;
+		}
 
 		// Open Options Group
 		echo '<div class="options_group prevent-repeat-purchase-wrap">';
@@ -68,29 +68,38 @@ class WC_Prevent_Repeat_Purchases {
 		update_post_meta( $post_id, 'prevent_repeat_purchase', empty( $_POST['prevent_repeat_purchase'] ) ? 'no' : 'yes' );
 	}
 
-    /**
-     * Scripts for the Admin to hide checkbox for products that aren't simple
-     */
-    public function admin_scripts() {
-        // Get Screens
-        $screen       = get_current_screen();
-        $screen_id    = $screen ? $screen->id : '';
+	/**
+	 * Scripts for the Admin to hide checkbox for products that aren't simple
+	 */
+	public function admin_scripts() {
+		// Get Screens
+		$screen       = get_current_screen();
+		$screen_id    = $screen ? $screen->id : '';
 
-        // If this is the product edit screen
-        if ( in_array( $screen_id, [ 'product', 'edit-product' ] ) ) {
-            // JS to hide the option if it's not a simple product, just in case
-            wc_enqueue_js( "
-            jQuery( document.body ).on( 'woocommerce-product-type-change', function( event, value ) {
-                if ( value !== 'simple' ) {
-                    // Uncheck Checkbox
-                    jQuery( '#prevent_repeat_purchase' ).prop( 'checked', false );
-                    // Hide
-                    jQuery( '.prevent-repeat-purchase-wrap' ).hide();
-                }
-            });
-            " );
-        };
-    }
+		// If this is the product edit screen
+		if ( in_array( $screen_id, [ 'product', 'edit-product' ] ) ) {
+			// JS to hide the option if it's not a simple product, just in case
+			wc_enqueue_js( "
+			jQuery( document.body ).on( 'woocommerce-product-type-change', function( event, value ) {
+				if ( value !== 'simple' ) {
+					// Uncheck Checkbox
+					jQuery( '#prevent_repeat_purchase' ).prop( 'checked', false );
+					// Hide
+					jQuery( '.prevent-repeat-purchase-wrap' ).hide();
+				}
+			});
+			" );
+		};
+	}
+
+	/**
+	 * The purchased message
+	 */
+	public function purchased_message() {
+		$purchased_message = __( 'Looks like you\'ve already purchased this product! It can only be purchased once.', 'woocommerce-prevent-repeat-purchases' );
+
+		return apply_filters('wc_prevent_repeat_purchase_message', $purchased_message);
+	}
 
 	/**
 	 * Prevents repeat purchase for the product
@@ -102,7 +111,7 @@ class WC_Prevent_Repeat_Purchases {
 	 * @param \WC_Product $product the WooCommerce product
 	 * @return bool $purchasable the updated is_purchasable check
 	 */
-	public function prevent_repeat_purchase( $purchasable, $product ) {
+	public function prevent_repeat_purchase( $purchasable, $product_id ) {
 		// Exit if this is the order received page.
 		// This is to avoid showing the "%s has been removed from your cart because it can no longer be purchased."
 		// warning message after the item has been purchased which could lead to confusion as to whether their purchase
@@ -110,10 +119,6 @@ class WC_Prevent_Repeat_Purchases {
 		if ( is_wc_endpoint_url( 'order-received' ) ) {
 			return true;
 		}
-
-		// Get the ID for the current product (passed in)
-		// $product_id = $product->is_type( 'variation' ) ? $product->variation_id : $product->id;
-		$product_id = $product->get_id();
 
 		// Variable to check against
 		$non_purchasable = 0;
@@ -129,6 +134,9 @@ class WC_Prevent_Repeat_Purchases {
 
 		// return false if the customer has bought the product
 		if ( wc_customer_bought_product( wp_get_current_user()->user_email, get_current_user_id(), $product_id ) ) {
+			// show a notice
+			wc_add_notice( $this->purchased_message(), 'error' );
+
 			$purchasable = false;
 		}
 
@@ -143,15 +151,12 @@ class WC_Prevent_Repeat_Purchases {
 	 * @return string
 	 */
 	public function generate_disabled_message() {
-	    // Message text
-	    $message = __( 'Looks like you\'ve already purchased this product! It can only be purchased once.', 'woocommerce-prevent-repeat-purchases' );
-
 		// Generate the message
 		ob_start();
 		?>
 		<div class="woocommerce">
 			<div class="woocommerce-info wc-nonpurchasable-message">
-				<?php echo esc_html( apply_filters( 'wc_repeat_nonpurchaseable_message', $message ) ); ?>
+				<?php echo esc_html( $this->purchased_message() ); ?>
 			</div>
 		</div>
 		<?php
