@@ -96,14 +96,26 @@ class WC_Prevent_Repeat_Purchases {
 	}
 
 	/**
-	 * Check to see if the product is purchaseable
+	 * Check to see if the product is purchasable
 	 */
 	public function is_product_repeat_purchasable( $product_id ) {
-		// @todo: save this result in a transient
-		if ( get_post_meta( $product_id, 'prevent_repeat_purchase', true ) === 'yes' ) {
+		// Check for a value
+		$repeat_purchasable = get_transient( 'product_' . $product_id . '_repeat_purchaseable' );
+
+		// If there is no value in the transient... go get it
+		if ( $repeat_purchasable === false ) {
+			$repeat_purchasable_value = get_post_meta( $product_id, 'prevent_repeat_purchase', true );
+
+			// Set the transient for 5 minutes
+			set_transient( 'product_' . $product_id . '_repeat_purchaseable', $repeat_purchasable_value, 300 );
+		}
+
+		// If the box is checked, return false
+		if ( $repeat_purchasable === 'yes' ) {
 			return false;
 		}
 
+		// Default, return true
 		return true;
 	}
 
@@ -153,6 +165,7 @@ class WC_Prevent_Repeat_Purchases {
 		}
 
 		// Set the billing email
+		// @todo: add logic to remove anything b/w a "+" in the root email and "@" to prevent spoofing
 		$billing_email = $_REQUEST['billing_email'];
 
 		if ( $cart_items ) {
