@@ -23,6 +23,9 @@ class WC_Prevent_Repeat_Purchases {
 		// Don't allow the product to be purchased more than once
 		add_filter( 'woocommerce_is_purchasable', [ &$this, 'prevent_repeat_purchase' ], 10, 2 );
 
+		// Make sure the customer hasn't purchased the product before on checkout
+		add_action( 'woocommerce_before_checkout_process', [ &$this, 'before_checkout_process' ], 10, 1 );
+
 		// Purchase Disabled Messages
 		add_action( 'woocommerce_single_product_summary', [ &$this, 'purchase_disabled_message' ], 31 );
 
@@ -95,10 +98,7 @@ class WC_Prevent_Repeat_Purchases {
 	/**
 	 * Check to see if the product is purchaseable
 	 */
-	public function is_product_repeat_purchasable( $product ) {
-		// Get the ID for the current product (passed in)
-		$product_id = $product->get_id();
-
+	public function is_product_repeat_purchasable( $product_id ) {
 		// @todo: save this result in a transient
 		if ( get_post_meta( $product_id, 'prevent_repeat_purchase', true ) === 'yes' ) {
 			return false;
@@ -127,8 +127,8 @@ class WC_Prevent_Repeat_Purchases {
 		}
 
 		// If you CAN purchase this product more than once, move on
-		if ( $this->is_product_repeat_purchasable( $product ) ) {
-            return $purchasable;
+		if ( $this->is_product_repeat_purchasable( $product->get_id() ) ) {
+			return $purchasable;
 		}
 
 		// Return false if the customer has bought the product
@@ -137,6 +137,37 @@ class WC_Prevent_Repeat_Purchases {
 		}
 
 		return $purchasable;
+	}
+
+	/**
+	 * Check if we can purchase this product before the checkout process...
+	 */
+	public function before_checkout_process() {
+		$purchased_products = false;
+		$cart_items = WC()->cart->get_cart();
+		$billing_email = false;
+
+		// Set the billing email as long as it exists... (it should)
+		if ( ! isset( $_REQUEST['billing_email'] ) ) {
+			return;
+		}
+
+		// Set the billing email
+		$billing_email = $_REQUEST['billing_email'];
+
+		if ( $cart_items ) {
+			foreach ( $cart_items as $cart_item ) {
+				$product_id = $cart_item['product_id'];
+				// If the item can only be purchased once, check to see if this billing email has bought it
+				if ( ! $this->is_product_repeat_purchasable( $product_id ) ) {
+					if ( wc_customer_bought_product( $billing_email, get_current_user_id(), $product_id ) ) {
+						$product = wc_get_product( $product_id );
+						$product_name = $product->get_name();
+						wc_add_notice( sprintf( __( 'It looks like you\'ve already purchased "%1$s", please remove it from your cart and try again.' , 'woocommerce-prevent-repeat-purchases' ), $product_name ), 'error');
+					}
+				}
+			}
+		}
 	}
 
 	/**
