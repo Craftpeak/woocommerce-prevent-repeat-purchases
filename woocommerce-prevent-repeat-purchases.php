@@ -18,7 +18,7 @@ class WC_Prevent_Repeat_Purchases {
 		// Process the Admin Panel Saving
 		add_action( 'woocommerce_process_product_meta', [ &$this, 'write_panel_save' ] );
 		// Admin-side Scripts
-        add_action( 'admin_enqueue_scripts', [ &$this, 'admin_scripts' ] );
+		add_action( 'admin_enqueue_scripts', [ &$this, 'admin_scripts' ] );
 
 		// Don't allow the product to be purchased more than once
 		add_filter( 'woocommerce_is_purchasable', [ &$this, 'prevent_repeat_purchase' ], 10, 2 );
@@ -34,14 +34,14 @@ class WC_Prevent_Repeat_Purchases {
 	 * Function to write the HTML/form fields for the product panel
 	 */
 	public function write_panel() {
-	    // Setup some globals
-	    global $post;
-        $product = wc_get_product( $post->ID );
+		// Setup some globals
+		global $post;
+		$product = wc_get_product( $post->ID );
 
-        // Exit if this is not a simple product
-        if ( $product && ! $product->is_type( 'simple' ) ) {
-            return;
-        }
+		// Exit if this is not a simple product
+		if ( $product && ! $product->is_type( 'simple' ) ) {
+			return;
+		}
 
 		// Open Options Group
 		echo '<div class="options_group prevent-repeat-purchase-wrap">';
@@ -68,29 +68,44 @@ class WC_Prevent_Repeat_Purchases {
 		update_post_meta( $post_id, 'prevent_repeat_purchase', empty( $_POST['prevent_repeat_purchase'] ) ? 'no' : 'yes' );
 	}
 
-    /**
-     * Scripts for the Admin to hide checkbox for products that aren't simple
-     */
-    public function admin_scripts() {
-        // Get Screens
-        $screen       = get_current_screen();
-        $screen_id    = $screen ? $screen->id : '';
+	/**
+	 * Scripts for the Admin to hide checkbox for products that aren't simple
+	 */
+	public function admin_scripts() {
+		// Get Screens
+		$screen       = get_current_screen();
+		$screen_id    = $screen ? $screen->id : '';
 
-        // If this is the product edit screen
-        if ( in_array( $screen_id, [ 'product', 'edit-product' ] ) ) {
-            // JS to hide the option if it's not a simple product, just in case
-            wc_enqueue_js( "
-            jQuery( document.body ).on( 'woocommerce-product-type-change', function( event, value ) {
-                if ( value !== 'simple' ) {
-                    // Uncheck Checkbox
-                    jQuery( '#prevent_repeat_purchase' ).prop( 'checked', false );
-                    // Hide
-                    jQuery( '.prevent-repeat-purchase-wrap' ).hide();
-                }
-            });
-            " );
-        };
-    }
+		// If this is the product edit screen
+		if ( in_array( $screen_id, [ 'product', 'edit-product' ] ) ) {
+			// JS to hide the option if it's not a simple product, just in case
+			wc_enqueue_js( "
+			jQuery( document.body ).on( 'woocommerce-product-type-change', function( event, value ) {
+				if ( value !== 'simple' ) {
+					// Uncheck Checkbox
+					jQuery( '#prevent_repeat_purchase' ).prop( 'checked', false );
+					// Hide
+					jQuery( '.prevent-repeat-purchase-wrap' ).hide();
+				}
+			});
+			" );
+		};
+	}
+
+	/**
+	 * Check to see if the product is purchaseable
+	 */
+	public function is_product_repeat_purchasable( $product ) {
+		// Get the ID for the current product (passed in)
+		$product_id = $product->get_id();
+
+		// @todo: save this result in a transient
+		if ( get_post_meta( $product_id, 'prevent_repeat_purchase', true ) === 'yes' ) {
+			return false;
+		}
+
+		return true;
+	}
 
 	/**
 	 * Prevents repeat purchase for the product
@@ -111,24 +126,13 @@ class WC_Prevent_Repeat_Purchases {
 			return true;
 		}
 
-		// Get the ID for the current product (passed in)
-		// $product_id = $product->is_type( 'variation' ) ? $product->variation_id : $product->id;
-		$product_id = $product->get_id();
-
-		// Variable to check against
-		$non_purchasable = 0;
-
-		if ( get_post_meta( $product_id, 'prevent_repeat_purchase', true ) === 'yes' ) {
-			$non_purchasable = $product_id;
+		// If you CAN purchase this product more than once, move on
+		if ( $this->is_product_repeat_purchasable( $product ) ) {
+            return $purchasable;
 		}
 
-		// Bail unless the ID is equal to our desired non-purchasable product
-		if ( $non_purchasable != $product_id ) {
-			return $purchasable;
-		}
-
-		// return false if the customer has bought the product
-		if ( wc_customer_bought_product( wp_get_current_user()->user_email, get_current_user_id(), $product_id ) ) {
+		// Return false if the customer has bought the product
+		if ( wc_customer_bought_product( wp_get_current_user()->user_email, get_current_user_id(), $product->get_id() ) ) {
 			$purchasable = false;
 		}
 
@@ -143,8 +147,8 @@ class WC_Prevent_Repeat_Purchases {
 	 * @return string
 	 */
 	public function generate_disabled_message() {
-	    // Message text
-	    $message = __( 'Looks like you\'ve already purchased this product! It can only be purchased once.', 'woocommerce-prevent-repeat-purchases' );
+		// Message text
+		$message = __( 'Looks like you\'ve already purchased this product! It can only be purchased once.', 'woocommerce-prevent-repeat-purchases' );
 
 		// Generate the message
 		ob_start();
