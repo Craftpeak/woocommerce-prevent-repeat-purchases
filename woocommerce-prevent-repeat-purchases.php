@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce Prevent Repeat Purchases
  * Plugin URI: https://github.com/Craftpeak/woocommerce-prevent-repeat-purchases
  * Description: Adds a checkbox to the WooCommerce product page restricting products to only be purchased once.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Craftpeak
  * Author URI: https://craftpeak.com
  * Requires at least: 4.0
@@ -18,10 +18,13 @@ class WC_Prevent_Repeat_Purchases {
 		// Process the Admin Panel Saving
 		add_action( 'woocommerce_process_product_meta', [ &$this, 'write_panel_save' ] );
 		// Admin-side Scripts
-        add_action( 'admin_enqueue_scripts', [ &$this, 'admin_scripts' ] );
+		add_action( 'admin_enqueue_scripts', [ &$this, 'admin_scripts' ] );
 
 		// Don't allow the product to be purchased more than once
 		add_filter( 'woocommerce_is_purchasable', [ &$this, 'prevent_repeat_purchase' ], 10, 2 );
+
+		// Make sure the customer hasn't purchased the product before on checkout
+		add_action( 'woocommerce_check_cart_items', [ &$this, 'before_checkout_process' ], 10, 1 );
 
 		// Purchase Disabled Messages
 		add_action( 'woocommerce_single_product_summary', [ &$this, 'purchase_disabled_message' ], 31 );
@@ -34,14 +37,14 @@ class WC_Prevent_Repeat_Purchases {
 	 * Function to write the HTML/form fields for the product panel
 	 */
 	public function write_panel() {
-	    // Setup some globals
-	    global $post;
-        $product = wc_get_product( $post->ID );
+		// Setup some globals
+		global $post;
+		$product = wc_get_product( $post->ID );
 
-        // Exit if this is not a simple product
-        if ( $product && ! $product->is_type( 'simple' ) ) {
-            return;
-        }
+		// Exit if this is not a simple product
+		if ( $product && ! $product->is_type( 'simple' ) ) {
+			return;
+		}
 
 		// Open Options Group
 		echo '<div class="options_group prevent-repeat-purchase-wrap">';
@@ -66,31 +69,56 @@ class WC_Prevent_Repeat_Purchases {
 	public function write_panel_save( $post_id ) {
 		// Toggle the checkbox
 		update_post_meta( $post_id, 'prevent_repeat_purchase', empty( $_POST['prevent_repeat_purchase'] ) ? 'no' : 'yes' );
+		delete_transient( 'product_' . $post_id . '_repeat_purchaseable' );
 	}
 
-    /**
-     * Scripts for the Admin to hide checkbox for products that aren't simple
-     */
-    public function admin_scripts() {
-        // Get Screens
-        $screen       = get_current_screen();
-        $screen_id    = $screen ? $screen->id : '';
+	/**
+	 * Scripts for the Admin to hide checkbox for products that aren't simple
+	 */
+	public function admin_scripts() {
+		// Get Screens
+		$screen       = get_current_screen();
+		$screen_id    = $screen ? $screen->id : '';
 
-        // If this is the product edit screen
-        if ( in_array( $screen_id, [ 'product', 'edit-product' ] ) ) {
-            // JS to hide the option if it's not a simple product, just in case
-            wc_enqueue_js( "
-            jQuery( document.body ).on( 'woocommerce-product-type-change', function( event, value ) {
-                if ( value !== 'simple' ) {
-                    // Uncheck Checkbox
-                    jQuery( '#prevent_repeat_purchase' ).prop( 'checked', false );
-                    // Hide
-                    jQuery( '.prevent-repeat-purchase-wrap' ).hide();
-                }
-            });
-            " );
-        };
-    }
+		// If this is the product edit screen
+		if ( in_array( $screen_id, [ 'product', 'edit-product' ] ) ) {
+			// JS to hide the option if it's not a simple product, just in case
+			wc_enqueue_js( "
+			jQuery( document.body ).on( 'woocommerce-product-type-change', function( event, value ) {
+				if ( value !== 'simple' ) {
+					// Uncheck Checkbox
+					jQuery( '#prevent_repeat_purchase' ).prop( 'checked', false );
+					// Hide
+					jQuery( '.prevent-repeat-purchase-wrap' ).hide();
+				}
+			});
+			" );
+		};
+	}
+
+	/**
+	 * Check to see if the product is purchasable
+	 */
+	public function is_product_repeat_purchasable( $product_id ) {
+		// Check for a value
+		$repeat_purchasable = get_transient( 'product_' . $product_id . '_repeat_purchaseable' );
+
+		// If there is no value in the transient... go get it
+		if ( $repeat_purchasable === false ) {
+			$repeat_purchasable_value = get_post_meta( $product_id, 'prevent_repeat_purchase', true );
+
+			// Set the transient for 5 minutes
+			set_transient( 'product_' . $product_id . '_repeat_purchaseable', $repeat_purchasable_value, 300 );
+		}
+
+		// If the box is checked, return false
+		if ( $repeat_purchasable === 'yes' ) {
+			return false;
+		}
+
+		// Default, return true
+		return true;
+	}
 
 	/**
 	 * Prevents repeat purchase for the product
@@ -111,28 +139,49 @@ class WC_Prevent_Repeat_Purchases {
 			return true;
 		}
 
-		// Get the ID for the current product (passed in)
-		// $product_id = $product->is_type( 'variation' ) ? $product->variation_id : $product->id;
-		$product_id = $product->get_id();
-
-		// Variable to check against
-		$non_purchasable = 0;
-
-		if ( get_post_meta( $product_id, 'prevent_repeat_purchase', true ) === 'yes' ) {
-			$non_purchasable = $product_id;
-		}
-
-		// Bail unless the ID is equal to our desired non-purchasable product
-		if ( $non_purchasable != $product_id ) {
+		// If you CAN purchase this product more than once, move on
+		if ( $this->is_product_repeat_purchasable( $product->get_id() ) ) {
 			return $purchasable;
 		}
 
-		// return false if the customer has bought the product
-		if ( wc_customer_bought_product( wp_get_current_user()->user_email, get_current_user_id(), $product_id ) ) {
+		// Return false if the customer has bought the product
+		if ( wc_customer_bought_product( wp_get_current_user()->user_email, get_current_user_id(), $product->get_id() ) ) {
 			$purchasable = false;
 		}
 
 		return $purchasable;
+	}
+
+	/**
+	 * Check if we can purchase this product before the checkout process...
+	 */
+	public function before_checkout_process() {
+		$purchased_products = false;
+		$cart_items = WC()->cart->get_cart();
+		$billing_email = false;
+
+		// Set the billing email as long as it exists... (it should)
+		if ( ! isset( $_REQUEST['billing_email'] ) ) {
+			return;
+		}
+
+		// Set the billing email
+		// @todo: add logic to remove anything b/w a "+" in the root email and "@" to prevent spoofing
+		$billing_email = $_REQUEST['billing_email'];
+
+		if ( $cart_items ) {
+			foreach ( $cart_items as $cart_item ) {
+				$product_id = $cart_item['product_id'];
+				// If the item can only be purchased once, check to see if this billing email has bought it
+				if ( ! $this->is_product_repeat_purchasable( $product_id ) ) {
+					if ( wc_customer_bought_product( $billing_email, get_current_user_id(), $product_id ) ) {
+						$product = wc_get_product( $product_id );
+						$product_name = $product->get_name();
+						wc_add_notice( sprintf( __( 'It looks like you\'ve already purchased "%1$s", please remove it from your cart and try again.' , 'woocommerce-prevent-repeat-purchases' ), $product_name ), 'error');
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -143,8 +192,8 @@ class WC_Prevent_Repeat_Purchases {
 	 * @return string
 	 */
 	public function generate_disabled_message() {
-	    // Message text
-	    $message = __( 'Looks like you\'ve already purchased this product! It can only be purchased once.', 'woocommerce-prevent-repeat-purchases' );
+		// Message text
+		$message = __( 'Looks like you\'ve already purchased this product! It can only be purchased once.', 'woocommerce-prevent-repeat-purchases' );
 
 		// Generate the message
 		ob_start();
