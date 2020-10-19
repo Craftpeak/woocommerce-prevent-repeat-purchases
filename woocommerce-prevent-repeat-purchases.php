@@ -24,7 +24,7 @@ class WC_Prevent_Repeat_Purchases {
 		add_filter( 'woocommerce_is_purchasable', [ &$this, 'prevent_repeat_purchase' ], 10, 2 );
 
 		// Make sure the customer hasn't purchased the product before on checkout
-		add_action( 'woocommerce_before_checkout_process', [ &$this, 'before_checkout_process' ], 10, 1 );
+		add_action( 'woocommerce_check_cart_items', [ &$this, 'before_checkout_process' ], 10, 1 );
 
 		// Purchase Disabled Messages
 		add_action( 'woocommerce_single_product_summary', [ &$this, 'purchase_disabled_message' ], 31 );
