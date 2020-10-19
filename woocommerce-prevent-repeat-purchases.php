@@ -69,6 +69,7 @@ class WC_Prevent_Repeat_Purchases {
 	public function write_panel_save( $post_id ) {
 		// Toggle the checkbox
 		update_post_meta( $post_id, 'prevent_repeat_purchase', empty( $_POST['prevent_repeat_purchase'] ) ? 'no' : 'yes' );
+		delete_transient( 'product_' . $post_id . '_repeat_purchaseable' );
 	}
 
 	/**
