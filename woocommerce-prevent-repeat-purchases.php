@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce Prevent Repeat Purchases
  * Plugin URI: https://github.com/Craftpeak/woocommerce-prevent-repeat-purchases
  * Description: Adds a checkbox to the WooCommerce product page restricting products to only be purchased once.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Craftpeak
  * Author URI: https://craftpeak.com
  * Requires at least: 4.0
@@ -244,10 +244,13 @@ class WC_Prevent_Repeat_Purchases {
 			// Get all error notices
 			$notices = wc_get_notices( 'error' );
 			foreach ( $notices as $notice ) {
+				// WooCommerce 3.9+ stores each notice as [ 'notice' => text, 'data' => [] ]; older versions used a string.
+				$text = is_array( $notice ) ? ( $notice['notice'] ?? '' ) : $notice;
 				// Check if notice text matches ours
-				if ( strpos( $notice, 'has been removed from your cart because it can no longer be purchased') !== false ) {
+				if ( is_string( $text ) && strpos( $text, 'has been removed from your cart because it can no longer be purchased' ) !== false ) {
 					// Clear the notices
 					wc_clear_notices();
+					break;
 				}
 			}
 		}
